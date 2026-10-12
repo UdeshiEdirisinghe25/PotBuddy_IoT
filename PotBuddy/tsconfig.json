@@ -1,0 +1,26 @@
+{
+  "extends": "expo/tsconfig.base",
+  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "backend/**/*.ts"],
+  "exclude": ["node_modules", "src/routes", "src/components", "src/test"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedSideEffectImports": true
+  }
+}

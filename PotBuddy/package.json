@@ -1,0 +1,37 @@
+{
+  "name": "potbuddy-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "api": "tsx backend/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "dotenv": "18.0.7",
+    "expo": "^54.0.0",
+    "expo-constants": "~18.0.14",
+    "expo-status-bar": "~3.0.9",
+    "express": "5.3.0",
+    "firebase": "^10.14.1",
+    "firebase-admin": "14.5.0",
+    "mqtt": "5.16.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-web": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "@types/react": "~19.1.10",
+    "tsx": "4.23.15",
+    "typescript": "~5.9.2"
+  }
+}

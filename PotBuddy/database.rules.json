@@ -1,0 +1,13 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "devices": {
+      "$deviceId": {
+        "readings": {
+          ".indexOn": ["receivedAt"]
+        }
+      }
+    }
+  }
+}

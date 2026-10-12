@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "PotBuddy",
+    "slug": "potbuddy",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "potbuddy",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.potbuddy.mobile"
+    },
+    "android": {
+      "package": "com.potbuddy.mobile",
+      "permissions": []
+    },
+    "web": {
+      "favicon": "./assets/favicon.ico"
+    },
+    "platforms": ["ios", "android", "web"]  }
+}
