@@ -369,6 +369,81 @@ app.post("/api/devices/:deviceId/notifications", async (request, response) => {
   response.json({ registered: true });
 });
 
+app.post("/api/devices/:deviceId/config", async (request, response) => {
+  const deviceId = parseDeviceId(request.params["deviceId"]);
+  const body = (request.body ?? {}) as Record<string, unknown>;
+  if (!deviceId) {
+    response.status(400).json({ error: "Invalid device ID." });
+    return;
+  }
+  if (!(await authorizeDevice(deviceId, response))) return;
+  if (body["type"] !== "config" || typeof body["autoWaterEnabled"] !== "boolean") {
+    response.status(400).json({ error: "A config message with autoWaterEnabled is required." });
+    return;
+  }
+
+  const profilesInput = body["profiles"];
+  if (!profilesInput || typeof profilesInput !== "object" || Array.isArray(profilesInput)) {
+    response.status(400).json({ error: "Profiles for pots 1–3 are required." });
+    return;
+  }
+
+  const profiles = profilesInput as Record<string, unknown>;
+  const potIds = ["pot-1", "pot-2", "pot-3"];
+  const safeProfiles: Record<string, { startBelowPct: number | null; targetPct: number | null }> = {};
+  for (const potId of potIds) {
+    const profile = profiles[potId];
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      response.status(400).json({ error: `A moisture profile for ${potId} is required.` });
+      return;
+    }
+    const values = profile as Record<string, unknown>;
+    const startBelowPct = values["startBelowPct"];
+    const targetPct = values["targetPct"];
+    const validPct = (value: unknown): value is number | null => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+    if (!validPct(startBelowPct) || !validPct(targetPct)) {
+      response.status(400).json({ error: `Moisture thresholds for ${potId} must be between 0 and 100.` });
+      return;
+    }
+    if (body["autoWaterEnabled"] && (startBelowPct === null || targetPct === null || startBelowPct >= targetPct)) {
+      response.status(400).json({ error: `Set a valid dry-soil level below the target for ${potId} before enabling Auto.` });
+      return;
+    }
+    safeProfiles[potId] = { startBelowPct, targetPct };
+  }
+
+  const pulseDurationSeconds = body["pulseDurationSeconds"];
+  const maximumRuntimeSeconds = body["maximumRuntimeSeconds"];
+  const validDuration = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 120;
+  if (body["autoWaterEnabled"] && (!validDuration(pulseDurationSeconds) || !validDuration(maximumRuntimeSeconds) || pulseDurationSeconds > maximumRuntimeSeconds)) {
+    response.status(400).json({ error: "Choose valid watering and maximum runtime values before enabling Auto." });
+    return;
+  }
+
+  if (!mqttClient.connected) {
+    response.status(503).json({ error: "The MQTT broker is disconnected; configuration was not sent." });
+    return;
+  }
+
+  const configuration = {
+    type: "config",
+    autoWaterEnabled: body["autoWaterEnabled"],
+    pulseDurationSeconds: validDuration(pulseDurationSeconds) ? pulseDurationSeconds : null,
+    maximumRuntimeSeconds: validDuration(maximumRuntimeSeconds) ? maximumRuntimeSeconds : null,
+    profiles: safeProfiles,
+  };
+  const topic = `${topicRoot}/${deviceId}/commands`;
+  mqttClient.publish(topic, JSON.stringify(configuration), { qos: 1 }, (error) => {
+    if (error) {
+      console.error(`Could not publish configuration to ${topic}`, error);
+      response.status(503).json({ error: "The controller configuration could not be published." });
+      return;
+    }
+    console.info(`Sent controller configuration to ${topic}`);
+    response.status(202).json({ accepted: true });
+  });
+});
+
 // Send a watering or stop command to the ESP32.
 app.post(
   "/api/devices/:deviceId/commands",

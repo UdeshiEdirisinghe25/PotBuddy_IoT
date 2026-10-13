@@ -125,7 +125,7 @@ export default function PotBuddyApp() {
   }, [expoPushToken, snapshot?.deviceId, authState, settingsLoaded, settings]);
 
   useEffect(() => {
-    if (!snapshot?.deviceId || authState !== "ready" || !settingsLoaded) return;
+    if (!snapshot?.deviceId || authState !== "ready" || !settingsLoaded || !snapshot.online || !backend?.mqttConnected) return;
     const potIds = ["pot-1", "pot-2", "pot-3"];
     const profiles = Object.fromEntries(potIds.map((potId) => {
       const profile = settings.profiles[potId];
@@ -151,7 +151,7 @@ export default function PotBuddyApp() {
       setDeviceConfigError("Automatic watering settings could not reach the controller. Check the backend configuration endpoint and connection.");
       if (settings.autoWaterEnabled) updateSettings((current) => ({ ...current, autoWaterEnabled: false }));
     });
-  }, [snapshot?.deviceId, authState, settingsLoaded, settings.autoWaterEnabled, settings.pulseDurationSeconds, settings.maximumRuntimeSeconds, settings.profiles, updateSettings]);
+  }, [snapshot?.deviceId, snapshot?.online, backend?.mqttConnected, authState, settingsLoaded, settings.autoWaterEnabled, settings.pulseDurationSeconds, settings.maximumRuntimeSeconds, settings.profiles, updateSettings]);
 
   useEffect(() => {
     if (authState !== "ready") return;
