@@ -4,12 +4,13 @@ import type { PlantProfile } from "../domain";
 import { Card, ScreenTitle } from "../components/ui";
 import type { AppSettings, ObservedPot } from "../services/plantData";
 
-export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, reservoirAvailable, onToggleAuto, onSetDuration, onSetMaximumRuntime, onSetCheckInterval, onSetTemperatureLimit, onToggleLowAlerts, onToggleReservoirAlerts, onToggleOfflineAlerts, onSaveProfile }: {
+export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, reservoirAvailable, deviceConfigError, onToggleAuto, onSetDuration, onSetMaximumRuntime, onSetCheckInterval, onSetTemperatureLimit, onToggleLowAlerts, onToggleReservoirAlerts, onToggleOfflineAlerts, onSaveProfile }: {
   plants: ObservedPot[];
   settings: AppSettings;
   deviceOnline: boolean;
   brokerOnline: boolean;
   reservoirAvailable: boolean | undefined;
+  deviceConfigError: string | null;
   onToggleAuto: (enabled: boolean) => void;
   onSetDuration: (duration: number | null) => void;
   onSetMaximumRuntime: (seconds: number | null) => void;
@@ -20,7 +21,12 @@ export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, r
   onToggleOfflineAlerts: (enabled: boolean) => void;
   onSaveProfile: (potId: string, profile: PlantProfile) => void;
 }) {
-  const autoReady = settings.pulseDurationSeconds !== null && settings.maximumRuntimeSeconds !== null && plants.length > 0 && plants.every((plant) => {
+  const requiredPotIds = ["pot-1", "pot-2", "pot-3"];
+  const profilesReady = requiredPotIds.every((potId) => {
+    const profile = settings.profiles[potId];
+    return profile?.startBelowPct !== null && profile?.startBelowPct !== undefined && profile?.targetPct !== null && profile?.targetPct !== undefined && profile.startBelowPct < profile.targetPct;
+  });
+  const autoReady = settings.pulseDurationSeconds !== null && settings.maximumRuntimeSeconds !== null && plants.length > 0 && profilesReady && plants.every((plant) => {
     const profile = settings.profiles[plant.potId];
     return profile?.startBelowPct !== null && profile?.startBelowPct !== undefined && profile?.targetPct !== null && profile?.targetPct !== undefined && profile.startBelowPct < profile.targetPct;
   });
@@ -29,9 +35,11 @@ export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, r
     <ScreenTitle title="Settings" subtitle="Choose how PotBuddy cares for your plants." />
     <Text style={styles.sectionTitle}>Automatic watering</Text>
     <Card>
-      <View style={styles.switchRow}><View style={styles.grow}><Text style={styles.rowTitle}>Enable automatic watering</Text><Text style={styles.help}>Checks your plants while PotBuddy is open.</Text></View><Switch value={settings.autoWaterEnabled} onValueChange={onToggleAuto} trackColor={{ false: "#d9dfda", true: "#9dc7aa" }} thumbColor={settings.autoWaterEnabled ? "#216b4a" : "#f5f5f5"} /></View>
+      <View style={styles.switchRow}><View style={styles.grow}><Text style={styles.rowTitle}>Enable automatic watering</Text><Text style={styles.help}>Sends the automatic watering configuration to your controller.</Text></View><Switch value={settings.autoWaterEnabled} disabled={!autoReady && !settings.autoWaterEnabled} onValueChange={onToggleAuto} trackColor={{ false: "#d9dfda", true: "#9dc7aa" }} thumbColor={settings.autoWaterEnabled ? "#216b4a" : "#f5f5f5"} /></View>
+      {!autoReady && !settings.autoWaterEnabled && <Text style={styles.warning}>Set valid dry-soil and target levels for pots 1–3, then choose both watering times to enable Auto.</Text>}
       {settings.autoWaterEnabled && !autoReady && <Text style={styles.warning}>Automatic watering is on but not ready. Set a dry-soil level and a target for each plant, then choose how long to water it.</Text>}
       {settings.autoWaterEnabled && autoReady && (!deviceOnline || !brokerOnline || reservoirAvailable === false) && <Text style={styles.warning}>Automatic watering is paused. Make sure the watering device is online and the tank has water.</Text>}
+      {deviceConfigError && <Text style={styles.warning}>{deviceConfigError}</Text>}
       <NumberField label="Watering time" value={settings.pulseDurationSeconds} unit="sec" min={1} max={120} integer onSave={onSetDuration} />
       <NumberField label="Longest watering time" value={settings.maximumRuntimeSeconds} unit="sec" min={1} max={120} integer allowEmpty onSave={onSetMaximumRuntime} />
       <NumberField label="Check plants every" value={settings.checkIntervalSeconds} unit="sec" min={5} max={3600} integer onSave={(value) => { if (value !== null) onSetCheckInterval(value); }} />

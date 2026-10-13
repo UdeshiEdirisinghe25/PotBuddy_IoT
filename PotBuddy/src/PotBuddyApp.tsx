@@ -4,8 +4,10 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import type { DeviceSnapshot, PlantProfile, WaterCommand } from "./domain";
-import { apiConfigured, getBackendStatus, getReadings, sendPotWaterCommand, sendStopCommand, type BackendStatus } from "./services/api";
+import { apiConfigured, getBackendStatus, getReadings, registerNotificationSettings, sendDeviceConfiguration, sendPotWaterCommand, sendStopCommand, type BackendStatus } from "./services/api";
 import { ensureAnonymousSession, firebaseConfigured } from "./services/firebase";
+import { getPotBuddyPushToken } from "./services/notifications";
+import * as Notifications from "expo-notifications";
 import { HomeScreen } from "./screens/HomeScreen";
 import { PlantsScreen } from "./screens/PlantsScreen";
 import { WaterScreen } from "./screens/WaterScreen";
@@ -36,6 +38,8 @@ export default function PotBuddyApp() {
   const [settings, setSettings] = useState<AppSettings>(emptySettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [deviceConfigError, setDeviceConfigError] = useState<string | null>(null);
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [sendingPotId, setSendingPotId] = useState<string | null>(null);
   const [wateringSecondsByPot, setWateringSecondsByPot] = useState<Record<string, number>>({});
   const [commandMessage, setCommandMessage] = useState<string | null>(null);
@@ -96,6 +100,58 @@ export default function PotBuddyApp() {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void getPotBuddyPushToken().then((token) => {
+      if (active) setExpoPushToken(token);
+    }).catch((error: unknown) => console.warn("Push notification setup failed", error));
+    const tokenSubscription = Notifications.addPushTokenListener((token) => setExpoPushToken(token.data));
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(() => setTab("Alerts"));
+    return () => { active = false; tokenSubscription.remove(); responseSubscription.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (!expoPushToken || !snapshot?.deviceId || authState !== "ready" || !settingsLoaded) return;
+    const profiles = Object.fromEntries(Object.entries(settings.profiles).map(([potId, profile]) => [potId, { name: profile.name, startBelowPct: profile.startBelowPct }]));
+    void registerNotificationSettings(snapshot.deviceId, {
+      expoPushToken,
+      lowMoistureAlerts: settings.lowMoistureAlerts,
+      lowReservoirAlerts: settings.lowReservoirAlerts,
+      deviceOfflineAlerts: settings.deviceOfflineAlerts,
+      temperatureAlertC: settings.temperatureAlertC,
+      profiles,
+    }).catch((error: unknown) => console.warn("Push notification registration failed", error));
+  }, [expoPushToken, snapshot?.deviceId, authState, settingsLoaded, settings]);
+
+  useEffect(() => {
+    if (!snapshot?.deviceId || authState !== "ready" || !settingsLoaded) return;
+    const potIds = ["pot-1", "pot-2", "pot-3"];
+    const profiles = Object.fromEntries(potIds.map((potId) => {
+      const profile = settings.profiles[potId];
+      return [potId, { startBelowPct: profile?.startBelowPct ?? null, targetPct: profile?.targetPct ?? null }];
+    }));
+    const profilesReady = potIds.every((potId) => {
+      const profile = profiles[potId];
+      return profile?.startBelowPct !== null && profile?.startBelowPct !== undefined && profile?.targetPct !== null && profile?.targetPct !== undefined && profile.startBelowPct < profile.targetPct;
+    });
+    if (settings.autoWaterEnabled && !profilesReady) {
+      setDeviceConfigError("Set valid moisture levels for pots 1–3 before enabling automatic watering.");
+      return;
+    }
+    setDeviceConfigError(null);
+    void sendDeviceConfiguration(snapshot.deviceId, {
+      type: "config",
+      autoWaterEnabled: settings.autoWaterEnabled,
+      pulseDurationSeconds: settings.pulseDurationSeconds,
+      maximumRuntimeSeconds: settings.maximumRuntimeSeconds,
+      profiles,
+    }).catch((error: unknown) => {
+      console.warn("Could not sync automatic watering configuration", error);
+      setDeviceConfigError("Automatic watering settings could not reach the controller. Check the backend configuration endpoint and connection.");
+      if (settings.autoWaterEnabled) updateSettings((current) => ({ ...current, autoWaterEnabled: false }));
+    });
+  }, [snapshot?.deviceId, authState, settingsLoaded, settings.autoWaterEnabled, settings.pulseDurationSeconds, settings.maximumRuntimeSeconds, settings.profiles, updateSettings]);
 
   useEffect(() => {
     if (authState !== "ready") return;
@@ -186,7 +242,11 @@ export default function PotBuddyApp() {
   const updateProfile = useCallback((potId: string, profile: PlantProfile) => {
     updateSettings((current) => {
       const profiles = { ...current.profiles, [potId]: profile };
-      const thresholdsReady = plants.length > 0 && plants.every((plant) => {
+      const allRequiredProfilesReady = ["pot-1", "pot-2", "pot-3"].every((requiredPotId) => {
+        const item = profiles[requiredPotId];
+        return item?.startBelowPct !== null && item?.startBelowPct !== undefined && item?.targetPct !== null && item?.targetPct !== undefined && item.startBelowPct < item.targetPct;
+      });
+      const thresholdsReady = allRequiredProfilesReady && plants.length > 0 && plants.every((plant) => {
         const item = profiles[plant.potId];
         return item?.startBelowPct !== null && item?.startBelowPct !== undefined && item?.targetPct !== null && item?.targetPct !== undefined && item.startBelowPct < item.targetPct;
       });
@@ -235,6 +295,7 @@ export default function PotBuddyApp() {
           deviceOnline={snapshot?.online === true}
           brokerOnline={backend?.mqttConnected === true}
           reservoirAvailable={snapshot?.reservoirAvailable}
+          deviceConfigError={deviceConfigError}
           onToggleAuto={(enabled) => updateSettings((current) => ({ ...current, autoWaterEnabled: enabled }))}
           onSetDuration={(duration) => updateSettings((current) => ({ ...current, pulseDurationSeconds: duration }))}
           onSetMaximumRuntime={(seconds) => updateSettings((current) => ({ ...current, maximumRuntimeSeconds: seconds }))}

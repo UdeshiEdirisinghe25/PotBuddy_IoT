@@ -14,7 +14,10 @@ export async function loadSettings(): Promise<AppSettings> {
     const profiles = loadProfiles(value["profiles"]);
     const pulseDurationSeconds = isValidDuration(value["pulseDurationSeconds"]) ? value["pulseDurationSeconds"] : null;
     const maximumRuntimeSeconds = isValidDuration(value["maximumRuntimeSeconds"]) ? value["maximumRuntimeSeconds"] : null;
-    const thresholdsReady = Object.keys(profiles).length > 0 && Object.values(profiles).every((profile) => profile.startBelowPct !== null && profile.targetPct !== null && profile.startBelowPct < profile.targetPct);
+    const thresholdsReady = ["pot-1", "pot-2", "pot-3"].every((potId) => {
+      const profile = profiles[potId];
+      return profile?.startBelowPct !== null && profile?.startBelowPct !== undefined && profile?.targetPct !== null && profile?.targetPct !== undefined && profile.startBelowPct < profile.targetPct;
+    }) && Object.values(profiles).every((profile) => profile.startBelowPct !== null && profile.targetPct !== null && profile.startBelowPct < profile.targetPct);
     return {
       ...emptySettings,
       profiles,

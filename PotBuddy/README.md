@@ -5,6 +5,8 @@ PotBuddy is an Expo iOS/Android app written in TypeScript/TSX, with a TypeScript
 ## Configure Firebase and EMQX
 
 1. Set the Expo Firebase web configuration and backend settings in `.env`. During development, PotBuddy derives the API host from Expo's LAN host and uses `API_PORT`; for a standalone build, set `EXPO_PUBLIC_API_URL` to a reachable API address. An explicit `EXPO_PUBLIC_DEVICE_ID` can pin a device; otherwise the app discovers devices authorized for the signed-in Firebase account.
+
+Push notifications use Expo Notifications on iOS and Android. Set `EXPO_PUBLIC_EAS_PROJECT_ID` to the EAS project ID and configure the project's Android FCM V1 and iOS APNs credentials in EAS. Install a development or production build after configuring notifications; remote push notifications are not supported in Expo Go on Android with SDK 53 and later. The app registers the Expo push token and alert thresholds with the backend, which sends notifications when telemetry or device status crosses an enabled alert condition. Notification permission must be granted on the device.
 2. In Firebase Authentication, enable **Anonymous** sign-in. The app signs in anonymously and sends its Firebase ID token to the API.
 3. Create a Firebase Admin service account for the same Firebase project. Store its JSON outside source control, set `GOOGLE_APPLICATION_CREDENTIALS` to its path, and set `FIREBASE_DATABASE_URL`.
 4. Apply `database.rules.json` to Realtime Database. The mobile client does not read the database directly; the Admin SDK on the backend performs database operations.

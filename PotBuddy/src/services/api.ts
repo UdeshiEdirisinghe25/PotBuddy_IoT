@@ -48,6 +48,33 @@ export function getBackendStatus(): Promise<BackendStatus> {
   return request<BackendStatus>("/health");
 }
 
+export async function registerNotificationSettings(deviceId: string, settings: {
+  expoPushToken: string;
+  lowMoistureAlerts: boolean;
+  lowReservoirAlerts: boolean;
+  deviceOfflineAlerts: boolean;
+  temperatureAlertC: number | null;
+  profiles: Record<string, { name: string; startBelowPct: number | null }>;
+}): Promise<void> {
+  await request(`/api/devices/${encodeURIComponent(deviceId)}/notifications`, {
+    method: "POST",
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function sendDeviceConfiguration(deviceId: string, configuration: {
+  type: "config";
+  autoWaterEnabled: boolean;
+  pulseDurationSeconds: number | null;
+  maximumRuntimeSeconds: number | null;
+  profiles: Record<string, { startBelowPct: number | null; targetPct: number | null }>;
+}): Promise<void> {
+  await request(`/api/devices/${encodeURIComponent(deviceId)}/config`, {
+    method: "POST",
+    body: JSON.stringify(configuration),
+  });
+}
+
 export async function sendPotWaterCommand(potId: string, durationSeconds: number): Promise<{ accepted: boolean; command: WaterCommand }> {
   const id = await getDeviceId();
   return request(`/api/devices/${encodeURIComponent(id)}/commands`, {

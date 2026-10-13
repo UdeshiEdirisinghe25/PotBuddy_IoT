@@ -85,6 +85,7 @@ const mqttClient: MqttClient = mqtt.connect(required("MQTT_URL"), {
   rejectUnauthorized: true,
 });
 const pumpStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 mqttClient.on("connect", () => {
   console.info("Connected to EMQX MQTT broker");
@@ -326,6 +327,47 @@ app.get(
     }
   },
 );
+
+app.post("/api/devices/:deviceId/notifications", async (request, response) => {
+  const deviceId = parseDeviceId(request.params["deviceId"]);
+  const firebaseUid = response.locals["firebaseUid"];
+  const body = (request.body ?? {}) as Record<string, unknown>;
+  const expoPushToken = body["expoPushToken"];
+  const profiles = body["profiles"];
+  if (!deviceId || typeof firebaseUid !== "string") {
+    response.status(400).json({ error: "Invalid device or user." });
+    return;
+  }
+  if (!(await authorizeDevice(deviceId, response))) return;
+  if (typeof expoPushToken !== "string" || !(/^ExponentPushToken\[[^\]]+\]$/.test(expoPushToken) || /^ExpoPushToken\[[^\]]+\]$/.test(expoPushToken))) {
+    response.status(400).json({ error: "A valid Expo push token is required." });
+    return;
+  }
+  if (!profiles || typeof profiles !== "object" || Array.isArray(profiles)) {
+    response.status(400).json({ error: "Plant profiles are required." });
+    return;
+  }
+  const safeProfiles: Record<string, { name: string; startBelowPct: number | null }> = {};
+  for (const [potId, value] of Object.entries(profiles as Record<string, unknown>)) {
+    if (!parsePotId(potId) || !value || typeof value !== "object" || Array.isArray(value)) continue;
+    const profile = value as Record<string, unknown>;
+    const threshold = profile["startBelowPct"];
+    if (typeof profile["name"] !== "string" || threshold !== null && (typeof threshold !== "number" || threshold < 0 || threshold > 100)) continue;
+    safeProfiles[potId] = { name: profile["name"].slice(0, 80), startBelowPct: threshold as number | null };
+  }
+  const temperatureAlertC = body["temperatureAlertC"];
+  await database.ref(`devices/${deviceId}/notificationSubscribers/${firebaseUid}`).update({
+    expoPushToken,
+    settings: {
+      lowMoistureAlerts: body["lowMoistureAlerts"] === true,
+      lowReservoirAlerts: body["lowReservoirAlerts"] === true,
+      deviceOfflineAlerts: body["deviceOfflineAlerts"] === true,
+      temperatureAlertC: typeof temperatureAlertC === "number" && temperatureAlertC >= -50 && temperatureAlertC <= 100 ? temperatureAlertC : null,
+      profiles: safeProfiles,
+    },
+  });
+  response.json({ registered: true });
+});
 
 // Send a watering or stop command to the ESP32.
 app.post(
@@ -609,6 +651,17 @@ async function handleMqttMessage(
       .ref(`devices/${deviceId}/status`)
       .update(nextStatus);
 
+    if (status.online) {
+      void processTelemetryPushAlerts(deviceId, { receivedAt: now, ...(typeof status.reservoirAvailable === "boolean" ? { reservoirAvailable: status.reservoirAvailable } : {}) }).catch((error: unknown) => console.error("Could not process status push alert", error));
+    }
+
+    if (status.online) {
+      scheduleOfflineCheck(deviceId, now);
+      void updateOfflinePushAlerts(deviceId, false).catch((error: unknown) => console.error("Could not clear offline push alert", error));
+    } else {
+      void updateOfflinePushAlerts(deviceId, true).catch((error: unknown) => console.error("Could not send offline push alert", error));
+    }
+
     return;
   }
 
@@ -652,10 +705,100 @@ async function handleMqttMessage(
       }),
   ]);
 
+  scheduleOfflineCheck(deviceId, now);
+  void updateOfflinePushAlerts(deviceId, false).catch((error: unknown) => console.error("Could not clear offline push alert", error));
+  void processTelemetryPushAlerts(deviceId, reading).catch((error: unknown) => console.error("Could not process push alerts", error));
+
   console.info(
     "Saved normalized telemetry:",
     JSON.stringify(reading),
   );
+}
+
+type PushAlert = { id: string; title: string; body: string; severity: "warning" | "critical" };
+type PushSubscriber = { expoPushToken?: unknown; settings?: unknown; activeAlerts?: unknown };
+
+function scheduleOfflineCheck(deviceId: string, lastSeenAt: number) {
+  const existing = offlineTimers.get(deviceId);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    offlineTimers.delete(deviceId);
+    void database.ref(`devices/${deviceId}/status`).get().then(async (snapshot) => {
+      const status = snapshot.val() as { lastSeenAt?: unknown; online?: unknown } | null;
+      if (status?.lastSeenAt !== lastSeenAt || status.online !== true) return;
+      await database.ref(`devices/${deviceId}/status/online`).set(false);
+      await updateOfflinePushAlerts(deviceId, true);
+    }).catch((error: unknown) => console.error("Offline notification check failed", error));
+  }, Math.max(0, offlineAfterMs));
+  offlineTimers.set(deviceId, timer);
+}
+
+async function updateOfflinePushAlerts(deviceId: string, offline: boolean) {
+  await updateSubscriberAlerts(deviceId, (subscriber) => {
+    const settings = subscriberSettings(subscriber);
+    return {
+      activate: offline && settings.deviceOfflineAlerts ? [{ id: "offline_active", title: "Watering device is offline", body: "The watering device stopped sending updates. Check its power and Wi-Fi.", severity: "critical" }] : [],
+      clear: !offline || !settings.deviceOfflineAlerts ? ["offline_active"] : [],
+    };
+  });
+}
+
+async function processTelemetryPushAlerts(deviceId: string, reading: SensorReading) {
+  await updateSubscriberAlerts(deviceId, (subscriber) => {
+    const settings = subscriberSettings(subscriber);
+    const profiles = settings.profiles && typeof settings.profiles === "object" ? settings.profiles as Record<string, { name?: string; startBelowPct?: number | null }> : {};
+    const readings = reading.pots?.length ? reading.pots : [{ potId: deviceId, moisturePct: reading.moisturePct, temperatureC: reading.temperatureC }];
+    const activate: PushAlert[] = [];
+    const clear: string[] = ["offline_active"];
+    for (const plant of readings) {
+      const profile = profiles[plant.potId];
+      const name = typeof profile?.name === "string" && profile.name ? profile.name : plant.potId;
+      const moistureId = `moisture_${plant.potId}`;
+      if (settings.lowMoistureAlerts && typeof plant.moisturePct === "number" && typeof profile?.startBelowPct === "number") {
+        if (plant.moisturePct < profile.startBelowPct) activate.push({ id: moistureId, title: `${name} needs water`, body: `Soil moisture is ${plant.moisturePct.toFixed(1)}%, below the ${profile.startBelowPct}% level you chose.`, severity: "warning" });
+        else clear.push(moistureId);
+      } else if (!settings.lowMoistureAlerts || profile?.startBelowPct === null) clear.push(moistureId);
+
+      const temperatureId = `temperature_${plant.potId}`;
+      if (typeof settings.temperatureAlertC === "number" && typeof plant.temperatureC === "number") {
+        if (plant.temperatureC > settings.temperatureAlertC) activate.push({ id: temperatureId, title: `It is warm near ${name}`, body: `The temperature is ${plant.temperatureC.toFixed(1)}°C, above the ${settings.temperatureAlertC}°C level you chose.`, severity: "warning" });
+        else clear.push(temperatureId);
+      } else if (settings.temperatureAlertC === null) clear.push(temperatureId);
+    }
+    if (typeof reading.reservoirAvailable === "boolean") {
+      if (settings.lowReservoirAlerts && !reading.reservoirAvailable) activate.push({ id: "reservoir_empty", title: "Water tank is empty", body: "Refill the tank before watering your plants.", severity: "critical" });
+      else clear.push("reservoir_empty");
+    }
+    return { activate, clear };
+  });
+}
+
+function subscriberSettings(subscriber: PushSubscriber): Record<string, unknown> {
+  return subscriber.settings && typeof subscriber.settings === "object" ? subscriber.settings as Record<string, unknown> : {};
+}
+
+async function updateSubscriberAlerts(deviceId: string, evaluate: (subscriber: PushSubscriber) => { activate: PushAlert[]; clear: string[] }) {
+  const snapshot = await database.ref(`devices/${deviceId}/notificationSubscribers`).get();
+  const subscribers = (snapshot.val() ?? {}) as Record<string, PushSubscriber>;
+  await Promise.all(Object.entries(subscribers).map(async ([uid, subscriber]) => {
+    if (typeof subscriber.expoPushToken !== "string") return;
+    const { activate, clear } = evaluate(subscriber);
+    const states = subscriber.activeAlerts && typeof subscriber.activeAlerts === "object" ? { ...(subscriber.activeAlerts as Record<string, boolean>) } : {};
+    const newlyActive = activate.filter((alert) => states[alert.id] !== true);
+    for (const id of clear) delete states[id];
+    for (const alert of activate) states[alert.id] = true;
+    await database.ref(`devices/${deviceId}/notificationSubscribers/${uid}/activeAlerts`).set(states);
+    await Promise.all(newlyActive.map((alert) => sendExpoPush(subscriber.expoPushToken as string, alert)));
+  }));
+}
+
+async function sendExpoPush(to: string, alert: PushAlert) {
+  const result = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: { Accept: "application/json", "Accept-Encoding": "gzip, deflate", "Content-Type": "application/json" },
+    body: JSON.stringify({ to, title: alert.title, body: alert.body, sound: "default", priority: alert.severity === "critical" ? "high" : "default", channelId: "alerts", data: { alertId: alert.id } }),
+  });
+  if (!result.ok) console.error("Expo push notification request failed", result.status, await result.text());
 }
 
 function parseObject(message: string): JsonObject {
@@ -840,10 +983,10 @@ function normalizePots(value: unknown): PotReading[] {
       payload["pot"] ??
       key;
 
-    const potId =
-      typeof rawId === "number" && Number.isInteger(rawId)
-        ? String(rawId)
-        : parsePotId(rawId);
+    const parsedPotId = typeof rawId === "number" && Number.isInteger(rawId)
+      ? String(rawId)
+      : parsePotId(rawId);
+    const potId = parsedPotId && parsedPotId.startsWith("pot-") ? parsedPotId : parsedPotId ? `pot-${parsedPotId}` : null;
 
     if (!potId) return [];
 
