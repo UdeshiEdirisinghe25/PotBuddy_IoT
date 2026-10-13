@@ -11,8 +11,12 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function getPotBuddyPushToken(): Promise<string | null> {
+export async function getPotBuddyPushToken(devicePushToken?: Notifications.DevicePushToken): Promise<string | null> {
   if (Platform.OS === "web") return null;
+  if (Constants.appOwnership === "expo") return null;
+
+  const projectId = Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.["eas"]?.projectId;
+  if (typeof projectId !== "string" || projectId.length === 0) return null;
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("alerts", {
@@ -27,7 +31,6 @@ export async function getPotBuddyPushToken(): Promise<string | null> {
   if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
   if (!permission.granted) return null;
 
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  const result = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+  const result = await Notifications.getExpoPushTokenAsync({ projectId, ...(devicePushToken ? { devicePushToken } : {}) });
   return result.data;
 }

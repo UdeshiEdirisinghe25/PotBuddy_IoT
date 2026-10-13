@@ -62,7 +62,7 @@ export function PlantsScreen({ snapshot, plants, settings, requests, onSaveProfi
       const image = current.imageKey ? plantImages[current.imageKey] : null;
       return <Pressable key={pot.potId} accessibilityRole="button" onPress={() => setSelectedId(pot.potId)} style={styles.plantCard}>
         {image ? <Image source={image} style={styles.plantImage} resizeMode="cover" /> : <View style={styles.plantPlaceholder}><Text style={styles.placeholderLetter}>{(current.name || pot.potId).slice(0, 1).toUpperCase()}</Text></View>}
-        <View style={styles.plantInfo}><Text style={styles.potId}>{pot.potId}</Text><Text style={styles.name}>{current.name}</Text><Text style={styles.species}>{current.species || "Add a plant type"}</Text><Text style={styles.state}>{moistureState(pot.moisturePct, current)}</Text><Text style={styles.cardTemperature}>Temperature · {formatValue(pot.temperatureC, "°C")}</Text></View>
+        <View style={styles.plantInfo}><Text style={styles.potId}>{pot.potId}</Text><Text style={styles.name}>{current.name}</Text><Text style={styles.species}>{current.species || "Add a plant type"}</Text><Text style={styles.state}>{moistureState(pot.moisturePct, current)}</Text></View>
         <View style={styles.moistureBox}><Text style={styles.moisture}>{formatValue(pot.moisturePct, "%")}</Text><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(pot.moisturePct ?? 0, 100))}%` }]} /></View><Text style={styles.open}>Details</Text></View>
       </Pressable>;
     })}
@@ -133,7 +133,6 @@ function PlantDetail({ pot, profile, history, lastWaterRequest, requestsToday, c
         <TextInput value={draft.species} onChangeText={(species) => setDraft({ ...draft, species })} onEndEditing={() => onSave(draft)} placeholder="Plant type" placeholderTextColor="#879188" style={styles.speciesInput} />
         <View style={styles.currentRow}>
           <View style={styles.currentMetric}><Text style={styles.currentLabel}>Soil moisture</Text><Text style={styles.currentValue}>{formatValue(pot.moisturePct, "%")}</Text><Text style={styles.state}>{moistureState(pot.moisturePct, draft)}</Text></View>
-          <View style={[styles.currentMetric, styles.temperatureMetric]}><Text style={styles.currentLabel}>Temperature</Text><Text style={styles.temperatureValue}>{formatValue(pot.temperatureC, "°C")}</Text><Text style={styles.temperatureNote}>Around this pot</Text></View>
         </View>
         <View style={styles.trackLarge}><View style={[styles.fillLarge, { width: `${Math.max(0, Math.min(pot.moisturePct ?? 0, 100))}%` }]} /></View>
       </View>
@@ -209,7 +208,6 @@ const styles = StyleSheet.create({
   name: { color: "#1d2e25", fontSize: 15, fontWeight: "800", marginTop: 3 },
   species: { color: "#748078", fontSize: 11, marginTop: 2 },
   state: { color: "#63806d", fontSize: 10, marginTop: 6 },
-  cardTemperature: { color: "#a66b35", fontSize: 10, fontWeight: "700", marginTop: 4 },
   moistureBox: { width: 73, alignItems: "center" },
   moisture: { color: "#216b4a", fontSize: 15, fontWeight: "800" },
   track: { width: 61, height: 5, borderRadius: 4, backgroundColor: "#e8eee8", marginTop: 5, overflow: "hidden" },
@@ -225,11 +223,8 @@ const styles = StyleSheet.create({
   speciesInput: { color: "#748078", fontSize: 14, paddingVertical: 5 },
   currentRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 12 },
   currentMetric: { flex: 1 },
-  temperatureMetric: { alignItems: "flex-end" },
   currentLabel: { color: "#748078", fontSize: 10, fontWeight: "700", marginBottom: 2 },
   currentValue: { color: "#216b4a", fontSize: 28, fontWeight: "800" },
-  temperatureValue: { color: "#b16c2c", fontSize: 28, fontWeight: "800" },
-  temperatureNote: { color: "#8b928d", fontSize: 10, marginTop: 6 },
   trackLarge: { width: "100%", height: 9, borderRadius: 6, backgroundColor: "#e8eee8", marginTop: 8, overflow: "hidden" },
   fillLarge: { height: "100%", backgroundColor: "#27905a", borderRadius: 6 },
   cardTitle: { color: "#1d2e25", fontSize: 15, fontWeight: "800" },

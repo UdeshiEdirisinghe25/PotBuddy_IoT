@@ -812,8 +812,8 @@ async function updateOfflinePushAlerts(deviceId: string, offline: boolean) {
   await updateSubscriberAlerts(deviceId, (subscriber) => {
     const settings = subscriberSettings(subscriber);
     return {
-      activate: offline && settings.deviceOfflineAlerts ? [{ id: "offline_active", title: "Watering device is offline", body: "The watering device stopped sending updates. Check its power and Wi-Fi.", severity: "critical" }] : [],
-      clear: !offline || !settings.deviceOfflineAlerts ? ["offline_active"] : [],
+      activate: offline && settings["deviceOfflineAlerts"] ? [{ id: "offline_active", title: "Watering device is offline", body: "The watering device stopped sending updates. Check its power and Wi-Fi.", severity: "critical" }] : [],
+      clear: !offline || !settings["deviceOfflineAlerts"] ? ["offline_active"] : [],
     };
   });
 }
@@ -821,7 +821,7 @@ async function updateOfflinePushAlerts(deviceId: string, offline: boolean) {
 async function processTelemetryPushAlerts(deviceId: string, reading: SensorReading) {
   await updateSubscriberAlerts(deviceId, (subscriber) => {
     const settings = subscriberSettings(subscriber);
-    const profiles = settings.profiles && typeof settings.profiles === "object" ? settings.profiles as Record<string, { name?: string; startBelowPct?: number | null }> : {};
+    const profiles = settings["profiles"] && typeof settings["profiles"] === "object" ? settings["profiles"] as Record<string, { name?: string; startBelowPct?: number | null }> : {};
     const readings = reading.pots?.length ? reading.pots : [{ potId: deviceId, moisturePct: reading.moisturePct, temperatureC: reading.temperatureC }];
     const activate: PushAlert[] = [];
     const clear: string[] = ["offline_active"];
@@ -829,19 +829,19 @@ async function processTelemetryPushAlerts(deviceId: string, reading: SensorReadi
       const profile = profiles[plant.potId];
       const name = typeof profile?.name === "string" && profile.name ? profile.name : plant.potId;
       const moistureId = `moisture_${plant.potId}`;
-      if (settings.lowMoistureAlerts && typeof plant.moisturePct === "number" && typeof profile?.startBelowPct === "number") {
+      if (settings["lowMoistureAlerts"] && typeof plant.moisturePct === "number" && typeof profile?.startBelowPct === "number") {
         if (plant.moisturePct < profile.startBelowPct) activate.push({ id: moistureId, title: `${name} needs water`, body: `Soil moisture is ${plant.moisturePct.toFixed(1)}%, below the ${profile.startBelowPct}% level you chose.`, severity: "warning" });
         else clear.push(moistureId);
-      } else if (!settings.lowMoistureAlerts || profile?.startBelowPct === null) clear.push(moistureId);
+      } else if (!settings["lowMoistureAlerts"] || profile?.startBelowPct === null) clear.push(moistureId);
 
       const temperatureId = `temperature_${plant.potId}`;
-      if (typeof settings.temperatureAlertC === "number" && typeof plant.temperatureC === "number") {
-        if (plant.temperatureC > settings.temperatureAlertC) activate.push({ id: temperatureId, title: `It is warm near ${name}`, body: `The temperature is ${plant.temperatureC.toFixed(1)}°C, above the ${settings.temperatureAlertC}°C level you chose.`, severity: "warning" });
+      if (typeof settings["temperatureAlertC"] === "number" && typeof plant.temperatureC === "number") {
+        if (plant.temperatureC > settings["temperatureAlertC"]) activate.push({ id: temperatureId, title: `It is warm near ${name}`, body: `The temperature is ${plant.temperatureC.toFixed(1)}°C, above the ${settings["temperatureAlertC"]}°C level you chose.`, severity: "warning" });
         else clear.push(temperatureId);
-      } else if (settings.temperatureAlertC === null) clear.push(temperatureId);
+      } else if (settings["temperatureAlertC"] === null) clear.push(temperatureId);
     }
     if (typeof reading.reservoirAvailable === "boolean") {
-      if (settings.lowReservoirAlerts && !reading.reservoirAvailable) activate.push({ id: "reservoir_empty", title: "Water tank is empty", body: "Refill the tank before watering your plants.", severity: "critical" });
+      if (settings["lowReservoirAlerts"] && !reading.reservoirAvailable) activate.push({ id: "reservoir_empty", title: "Water tank is empty", body: "Refill the tank before watering your plants.", severity: "critical" });
       else clear.push("reservoir_empty");
     }
     return { activate, clear };

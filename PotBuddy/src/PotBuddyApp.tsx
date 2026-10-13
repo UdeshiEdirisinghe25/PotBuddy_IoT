@@ -106,7 +106,9 @@ export default function PotBuddyApp() {
     void getPotBuddyPushToken().then((token) => {
       if (active) setExpoPushToken(token);
     }).catch((error: unknown) => console.warn("Push notification setup failed", error));
-    const tokenSubscription = Notifications.addPushTokenListener((token) => setExpoPushToken(token.data));
+    const tokenSubscription = Notifications.addPushTokenListener((deviceToken) => {
+      void getPotBuddyPushToken(deviceToken).then((token) => setExpoPushToken(token)).catch((error: unknown) => console.warn("Push token refresh failed", error));
+    });
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(() => setTab("Alerts"));
     return () => { active = false; tokenSubscription.remove(); responseSubscription.remove(); };
   }, []);
