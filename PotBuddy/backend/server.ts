@@ -45,7 +45,12 @@ const required = (name: string) => {
   return value;
 };
 
-const apiPort = Number(process.env["API_PORT"] ?? 4000);
+
+const apiPort = Number(
+  process.env["PORT"] ??
+  process.env["API_PORT"] ??
+  4000
+);
 const apiHost = process.env["API_HOST"] ?? "0.0.0.0";
 const topicRoot = process.env["MQTT_TOPIC_ROOT"] ?? "potbuddy";
 const offlineAfterMs = Number(

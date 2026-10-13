@@ -1,3 +1,4 @@
+
 {
   "name": "potbuddy-mobile",
   "version": "1.0.0",
@@ -8,6 +9,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "api": "tsx backend/server.ts",
+    "start:api": "tsx backend/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
