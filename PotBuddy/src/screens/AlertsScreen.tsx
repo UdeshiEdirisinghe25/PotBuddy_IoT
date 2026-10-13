@@ -14,7 +14,7 @@ export function AlertsScreen({ alerts, acknowledged, onAcknowledge, onAcknowledg
         <Text style={styles.alertTitle}>{alert.title}</Text><Text style={styles.alertBody}>{alert.body}</Text>
         <Pressable onPress={() => onAcknowledge(alert.id)} style={styles.acknowledge}><Text style={styles.acknowledgeText}>{read ? "Read" : "Mark as read"}</Text></Pressable>
       </Card>;
-    })}``
+    })}
   </>;
 }
 
