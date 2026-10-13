@@ -2,11 +2,14 @@
 import "dotenv/config";
 
 import { randomUUID } from "node:crypto";
+
 import {
   applicationDefault,
+  cert,
   getApps,
   initializeApp,
 } from "firebase-admin/app";
+
 import { getAuth } from "firebase-admin/auth";
 import { getDatabase } from "firebase-admin/database";
 import express, {
@@ -57,12 +60,19 @@ const offlineAfterMs = Number(
   process.env["DEVICE_OFFLINE_AFTER_MS"] ?? 90_000,
 );
 
+
+const serviceAccountJson =
+  process.env["FIREBASE_SERVICE_ACCOUNT_JSON"];
+
 const firebaseApp =
   getApps()[0] ??
   initializeApp({
-    credential: applicationDefault(),
+    credential: serviceAccountJson
+      ? cert(JSON.parse(serviceAccountJson))
+      : applicationDefault(),
     databaseURL: required("FIREBASE_DATABASE_URL"),
   });
+
 
 const database = getDatabase(firebaseApp);
 const firebaseAuth = getAuth(firebaseApp);
