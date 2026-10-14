@@ -10,10 +10,14 @@ export function SensorChart({ title, unit, color, readings, metric, min, max }: 
   const chartWidth = Math.max(240, screenWidth - 76);
   const chartHeight = 150;
   const graphWidth = chartWidth - 36;
-  const graphHeight = chartHeight - 24;
+  const graphHeight = chartHeight - 52;
   const values = readings.map((reading) => reading[metric]).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  const axisLow = min ?? (values.length ? Math.min(...values) : 0);
-  const axisHigh = Math.max(max ?? (values.length ? Math.max(...values) : 1), axisLow + 1);
+  const dataLow = values.length ? Math.min(...values) : 0;
+  const dataHigh = values.length ? Math.max(...values) : 1;
+  const dataRange = dataHigh - dataLow;
+  const axisPadding = dataRange > 0 ? dataRange * 0.15 : Math.max(Math.abs(dataLow) * 0.05, 1);
+  const axisLow = min ?? dataLow - axisPadding;
+  const axisHigh = Math.max(max ?? dataHigh + axisPadding, axisLow + 1);
   const points = useMemo(() => {
     const sorted = [...readings].sort((left, right) => left.receivedAt - right.receivedAt);
     if (sorted.filter((reading) => typeof reading[metric] === "number").length < 2) return [];
@@ -52,7 +56,7 @@ export function SensorChart({ title, unit, color, readings, metric, min, max }: 
             return <View key={`line-${index}`} style={[styles.segment, { width: length, left: (previous.x + point.x - length) / 2, top: (previous.y + point.y) / 2, backgroundColor: color, transform: [{ rotate: `${angle}deg` }] }]} />;
           })}
           {points.map((point, index) => <View key={`point-${index}`} style={[styles.dot, { left: point.x - 4, top: point.y - 4, backgroundColor: color }]} />)}
-          <View style={styles.xLabels}><Text style={styles.axis}>{formatTime(points[0]!.time)}</Text><Text style={styles.axis}>{formatTime(latest!.time)}</Text></View>
+          <View style={styles.xLabels}><Text numberOfLines={1} style={[styles.axis, styles.xAxisLabel]}>{formatTime(points[0]!.time)}</Text><Text numberOfLines={1} style={[styles.axis, styles.xAxisLabel, styles.xAxisLabelRight]}>{formatTime(latest!.time)}</Text></View>
         </View>
       )}
     </View>
@@ -73,6 +77,8 @@ const styles = StyleSheet.create({
   emptyText: { color: "#879188", fontSize: 12 },
   gridRow: { position: "absolute", left: 0, right: 0, flexDirection: "row", alignItems: "center", height: 1 },
   axis: { width: 27, color: "#89948c", fontSize: 9 },
+  xAxisLabel: { width: undefined, flexShrink: 1 },
+  xAxisLabelRight: { textAlign: "right" },
   gridLine: { height: 1, flex: 1, backgroundColor: "#edf0ec" },
   segment: { position: "absolute", height: 3, borderRadius: 2 },
   dot: { position: "absolute", width: 8, height: 8, borderWidth: 2, borderColor: "white", borderRadius: 5 },

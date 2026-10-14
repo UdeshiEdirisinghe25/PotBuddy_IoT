@@ -12,12 +12,29 @@ export function HistoryScreen({ snapshot, plants, names }: { snapshot: DeviceSna
   const thisWeekStart = now - WEEK_MS;
   const previousWeekStart = now - 2 * WEEK_MS;
   const samples = dedupeSamples(snapshot?.readings ?? [], snapshot?.latest ?? null);
+  const temperatureHistory = samples.flatMap((reading) => {
+    if (typeof reading.temperatureC === "number" && Number.isFinite(reading.temperatureC)) {
+      return [reading];
+    }
+
+    const potTemperatures = reading.pots
+      ?.map((pot) => pot.temperatureC)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (!potTemperatures?.length) return [];
+
+    return [{
+      ...reading,
+      temperatureC: potTemperatures.reduce((sum, value) => sum + value, 0) / potTemperatures.length,
+    }];
+  });
+  const thisWeekTemperatures = temperatureHistory.filter((reading) => reading.receivedAt >= thisWeekStart && reading.receivedAt <= now);
   const weekLabel = `${new Date(thisWeekStart).toLocaleDateString()} – ${new Date(now).toLocaleDateString()}`;
   const previousWeekLabel = `${new Date(previousWeekStart).toLocaleDateString()} – ${new Date(thisWeekStart).toLocaleDateString()}`;
 
   return <>
     <ScreenTitle title="History" subtitle="See how your plants have changed over time." />
     <View style={styles.summary}><View><Text style={styles.number}>{samples.length}</Text><Text style={styles.label}>readings available</Text></View><View style={styles.summaryDivider} /><View style={styles.summaryHint}><Text style={styles.summaryHintTitle}>Your plant data</Text><Text style={styles.note}>Based on updates from your watering device.</Text></View></View>
+    {thisWeekTemperatures.length > 0 && <SensorChart title="Temperature" unit="°C" color="#d78a32" readings={thisWeekTemperatures} metric="temperatureC" />}
     {!snapshot || samples.length === 0 ? <Card><Text style={styles.emptyTitle}>No history yet</Text><Text style={styles.emptyBody}>Your charts will appear here after the watering device sends its first readings.</Text></Card> : plants.length === 0 ? <Card><Text style={styles.emptyTitle}>No plant readings found</Text><Text style={styles.emptyBody}>The watering device needs to send soil readings for each plant.</Text></Card> : plants.map((plant) => {
       const history = getPotHistory(samples, plant.potId, snapshot.deviceId);
       const thisWeek = history.filter((reading) => reading.receivedAt >= thisWeekStart && reading.receivedAt <= now);
@@ -26,8 +43,6 @@ export function HistoryScreen({ snapshot, plants, names }: { snapshot: DeviceSna
       return <View key={plant.potId}>
         <View style={styles.plantHeading}><View style={styles.plantMark}><Text style={styles.plantMarkText}>{(names[plant.potId] || plant.potId).slice(0, 1).toUpperCase()}</Text></View><View style={styles.plantHeadingCopy}><Text style={styles.potTitle}>{names[plant.potId] || plant.potId}</Text><Text style={styles.plantId}>{plant.potId}</Text></View><View style={styles.sampleBadge}><Text style={styles.sampleBadgeValue}>{thisWeek.length}</Text><Text style={styles.sampleBadgeLabel}>readings this week</Text></View></View>
         <SensorChart title="Soil moisture" unit="%" color="#21825a" readings={thisWeek} metric="moisturePct" min={0} max={100} />
-        {thisWeek.some((reading) => reading.temperatureC !== undefined) && <SensorChart title="Temperature" unit="°C" color="#d78a32" readings={thisWeek} metric="temperatureC" />}
-
         <Card style={styles.periodCard}>
           <View style={styles.periodHeader}><View><Text style={styles.periodTitle}>Past 7 days details</Text><Text style={styles.periodDate}>{weekLabel}</Text></View><View style={styles.periodTag}><Text style={styles.periodTagText}>DETAILS</Text></View></View>
           <Text style={styles.periodBody}>{thisWeek.length} {thisWeek.length === 1 ? "reading" : "readings"}{latest ? ` · Latest ${new Date(latest.receivedAt).toLocaleString()}` : ""}</Text>

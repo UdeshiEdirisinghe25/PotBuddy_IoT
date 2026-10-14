@@ -59,6 +59,11 @@ const topicRoot = process.env["MQTT_TOPIC_ROOT"] ?? "potbuddy";
 const offlineAfterMs = Number(
   process.env["DEVICE_OFFLINE_AFTER_MS"] ?? 90_000,
 );
+const configuredRetentionDays = Number(process.env["READING_RETENTION_DAYS"] ?? 14);
+const readingRetentionDays = Number.isFinite(configuredRetentionDays) && configuredRetentionDays > 0
+  ? configuredRetentionDays
+  : 14;
+const readingRetentionMs = readingRetentionDays * 24 * 60 * 60 * 1000;
 
 
 const serviceAccountJson =
@@ -86,6 +91,18 @@ const mqttClient: MqttClient = mqtt.connect(required("MQTT_URL"), {
 });
 const pumpStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const offlineTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let retentionCleanupRunning = false;
+const retentionIndexedDeviceIds = new Set<string>();
+
+void cleanupExpiredReadings().catch((error: unknown) => {
+  console.error("Initial reading retention cleanup failed", error);
+});
+const retentionCleanupTimer = setInterval(() => {
+  void cleanupExpiredReadings().catch((error: unknown) => {
+    console.error("Reading retention cleanup failed", error);
+  });
+}, 60 * 60 * 1000);
+retentionCleanupTimer.unref();
 
 mqttClient.on("connect", () => {
   console.info("Connected to EMQX MQTT broker");
@@ -699,6 +716,7 @@ async function handleMqttMessage(
   }
 
   const now = Date.now();
+  await registerDeviceForRetention(deviceId);
 
   if (channel === "status") {
     const status = parseStatus(message);
@@ -792,6 +810,92 @@ async function handleMqttMessage(
 
 type PushAlert = { id: string; title: string; body: string; severity: "warning" | "critical" };
 type PushSubscriber = { expoPushToken?: unknown; settings?: unknown; activeAlerts?: unknown };
+
+async function cleanupExpiredReadings() {
+  if (retentionCleanupRunning) return;
+  retentionCleanupRunning = true;
+
+  try {
+    const cutoff = Date.now() - readingRetentionMs;
+    const indexInitializedRef = database.ref("_maintenance/readingRetentionIndexInitialized");
+    const indexInitializedSnapshot = await indexInitializedRef.get();
+    let deviceIds: string[];
+
+    if (indexInitializedSnapshot.val() === true) {
+      const indexedDevicesSnapshot = await database.ref("_maintenance/readingRetentionDeviceIds").get();
+      const indexedDevices = (indexedDevicesSnapshot.val() ?? {}) as Record<string, unknown>;
+      deviceIds = Object.keys(indexedDevices);
+      deviceIds.forEach((deviceId) => retentionIndexedDeviceIds.add(deviceId));
+    } else {
+      // One-time index migration; later cleanups read only this small device list.
+      const devicesSnapshot = await database.ref("devices").get();
+      const devices = (devicesSnapshot.val() ?? {}) as Record<string, unknown>;
+      deviceIds = Object.keys(devices);
+      const indexUpdates = Object.fromEntries(deviceIds.map((deviceId) => [deviceId, true]));
+      if (deviceIds.length > 0) {
+        await database.ref("_maintenance/readingRetentionDeviceIds").update(indexUpdates);
+      }
+      await indexInitializedRef.set(true);
+      deviceIds.forEach((deviceId) => retentionIndexedDeviceIds.add(deviceId));
+    }
+    let deletedCount = 0;
+
+    for (const deviceId of deviceIds) {
+      const readingsRef = database.ref(`devices/${deviceId}/readings`);
+      const expiredSnapshot = await readingsRef
+        .orderByChild("receivedAt")
+        .endAt(cutoff)
+        .get();
+      const expired = (expiredSnapshot.val() ?? {}) as Record<string, SensorReading>;
+      const expiredKeys = Object.entries(expired)
+        .filter(([, reading]) => typeof reading?.receivedAt === "number" && reading.receivedAt < cutoff)
+        .map(([key]) => key);
+
+      for (let index = 0; index < expiredKeys.length; index += 500) {
+        const updates = Object.fromEntries(
+          expiredKeys.slice(index, index + 500).map((key) => [key, null]),
+        );
+        await readingsRef.update(updates);
+      }
+      deletedCount += expiredKeys.length;
+
+      const latestRef = database.ref(`devices/${deviceId}/latest`);
+      const latestSnapshot = await latestRef.get();
+      const latest = latestSnapshot.val() as SensorReading | null;
+      if (typeof latest?.receivedAt === "number" && latest.receivedAt < cutoff) {
+        await latestRef.remove();
+      }
+
+      const statusRef = database.ref(`devices/${deviceId}/status`);
+      const statusSnapshot = await statusRef.get();
+      const status = statusSnapshot.val() as {
+        lastSeenAt?: unknown;
+        reservoirAvailable?: unknown;
+        reservoirLevelPct?: unknown;
+      } | null;
+      if (typeof status?.lastSeenAt === "number" && status.lastSeenAt < cutoff) {
+        await statusRef.update({ reservoirAvailable: null, reservoirLevelPct: null });
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.info(`Removed ${deletedCount} sensor readings older than ${readingRetentionDays} days`);
+    }
+  } finally {
+    retentionCleanupRunning = false;
+  }
+}
+
+async function registerDeviceForRetention(deviceId: string) {
+  if (retentionIndexedDeviceIds.has(deviceId)) return;
+  retentionIndexedDeviceIds.add(deviceId);
+  try {
+    await database.ref(`_maintenance/readingRetentionDeviceIds/${deviceId}`).set(true);
+  } catch (error) {
+    retentionIndexedDeviceIds.delete(deviceId);
+    throw error;
+  }
+}
 
 function scheduleOfflineCheck(deviceId: string, lastSeenAt: number) {
   const existing = offlineTimers.get(deviceId);

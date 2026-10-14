@@ -24,7 +24,7 @@ The backend subscribes to `potbuddy/{deviceId}/telemetry` and accepts JSON with 
 
 The device publishes status to `potbuddy/{deviceId}/status` as `online`/`offline` or JSON such as `{"online":true}`. Configure the ESP32's MQTT Last Will to publish `offline` to its status topic. Telemetry also refreshes the online heartbeat. Devices are treated as offline when the last heartbeat is older than `DEVICE_OFFLINE_AFTER_MS`.
 
-The backend writes the latest sample to `/devices/{deviceId}/latest`, history to `/devices/{deviceId}/readings/{pushId}`, and connection state to `/devices/{deviceId}/status`. It retains readings in Realtime Database; the API returns the most recent 40 by default.
+The backend writes the latest sample to `/devices/{deviceId}/latest`, history to `/devices/{deviceId}/readings/{pushId}`, and connection state to `/devices/{deviceId}/status`. Sensor readings older than 14 days are deleted at startup and during hourly cleanup, including a stale `latest` sample and stale reservoir sensor values. The retention period can be changed with the backend-only `READING_RETENTION_DAYS` setting. The API returns the most recent 40 readings by default.
 
 ## Multi-pot and actuator telemetry
 
