@@ -10,7 +10,7 @@ function readExpoValue(value: string | undefined): string {
 
 const explicitBaseUrl = readExpoValue(process.env["EXPO_PUBLIC_API_URL"]).replace(/\/$/, "");
 const expoHost = Constants.expoConfig?.hostUri?.split(":")[0]
-  || (typeof window !== "undefined" ? window.location.hostname : "");
+  || (typeof window !== "undefined" ? window.location?.hostname ?? "" : "");
 const apiPortValue = Constants.expoConfig?.extra?.["apiPort"];
 const inferredBaseUrl = expoHost && typeof apiPortValue === "number" && Number.isInteger(apiPortValue) && apiPortValue > 0
   ? `http://${expoHost}:${apiPortValue}`
