@@ -6,13 +6,18 @@
     "orientation": "portrait",
     "scheme": "potbuddy",
     "userInterfaceStyle": "light",
+    "icon": "./src/assets/icon.png",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.potbuddy.mobile"
     },
     "android": {
       "package": "com.potbuddy.mobile",
-      "permissions": []
+      "permissions": [],
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
     "plugins": [
       [
@@ -21,10 +26,19 @@
           "defaultChannel": "alerts",
           "color": "#216b4a"
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./src/assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
       ]
     ],
     "web": {
-      "favicon": "./assets/favicon.ico"
+      "favicon": "./public/favicon.ico"
     },
     "platforms": [
       "ios",
