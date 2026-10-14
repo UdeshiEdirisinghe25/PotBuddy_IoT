@@ -1,5 +1,5 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "expo/tsconfig.base.json",
   "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "backend/**/*.ts"],
   "exclude": ["node_modules", "src/routes", "src/components", "src/test"],
   "compilerOptions": {
