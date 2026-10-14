@@ -4,9 +4,10 @@ import type { PlantProfile } from "../domain";
 import { Card, ScreenTitle } from "../components/ui";
 import type { AppSettings, ObservedPot } from "../services/plantData";
 
-export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, reservoirAvailable, deviceConfigError, onToggleAuto, onSetDuration, onSetMaximumRuntime, onSetCheckInterval, onSetTemperatureLimit, onToggleLowAlerts, onToggleReservoirAlerts, onToggleOfflineAlerts, onSaveProfile }: {
+export function SettingsScreen({ plants, settings, firebaseUserId, deviceOnline, brokerOnline, reservoirAvailable, deviceConfigError, onToggleAuto, onSetDuration, onSetMaximumRuntime, onSetCheckInterval, onSetTemperatureLimit, onToggleLowAlerts, onToggleReservoirAlerts, onToggleOfflineAlerts, onSaveProfile }: {
   plants: ObservedPot[];
   settings: AppSettings;
+  firebaseUserId: string | null;
   deviceOnline: boolean;
   brokerOnline: boolean;
   reservoirAvailable: boolean | undefined;
@@ -67,6 +68,13 @@ export function SettingsScreen({ plants, settings, deviceOnline, brokerOnline, r
       <Text style={styles.help}>Alerts appear here in PotBuddy.</Text>
     </Card>
 
+    <Text style={styles.sectionTitle}>Firebase account</Text>
+    <Card>
+      <Text style={styles.rowTitle}>Current app UID</Text>
+      <Text selectable style={styles.uid}>{firebaseUserId ?? "Signing in…"}</Text>
+      <Text style={styles.help}>Long press the UID to select and copy it. Add this UID under devices/{"{deviceId}"}/authorizedUsers in Firebase Realtime Database, with the value true.</Text>
+    </Card>
+
     <Text style={styles.sectionTitle}>Connection</Text>
     <Card>
       <Connection label="Watering device" value={deviceOnline ? "Online" : "Offline"} active={deviceOnline} />
@@ -104,6 +112,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: "row", alignItems: "center", paddingBottom: 12 },
   grow: { flex: 1, paddingRight: 10 },
   rowTitle: { color: "#1d2e25", fontSize: 13, fontWeight: "800" },
+  uid: { color: "#1d2e25", fontSize: 12, lineHeight: 18, marginTop: 7 },
   help: { color: "#748078", fontSize: 10, lineHeight: 15, marginTop: 4 },
   warning: { color: "#9a641e", fontSize: 10, lineHeight: 15, marginTop: 9 },
   fieldRow: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#edf0ec", marginTop: 7, paddingTop: 6 },

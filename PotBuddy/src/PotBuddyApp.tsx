@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import type { DeviceSnapshot, PlantProfile, WaterCommand } from "./domain";
 import { apiConfigured, getBackendStatus, getReadings, registerNotificationSettings, sendDeviceConfiguration, sendPotWaterCommand, sendStopCommand, type BackendStatus } from "./services/api";
-import { ensureAnonymousSession, firebaseConfigured } from "./services/firebase";
+import { ensureAnonymousSession, firebaseConfigured, getCurrentUserId } from "./services/firebase";
 import { getPotBuddyPushToken } from "./services/notifications";
 import * as Notifications from "expo-notifications";
 import { HomeScreen } from "./screens/HomeScreen";
@@ -75,7 +75,7 @@ export default function PotBuddyApp() {
       setSnapshot(next);
       setDataError(null);
     } catch (error) {
-      setDataError("Plant information could not be loaded. Check your connection and try again.");
+      setDataError(getReadingsErrorMessage(error));
     }
     try {
       setBackend(await getBackendStatus());
@@ -294,6 +294,7 @@ export default function PotBuddyApp() {
         {tab === "Settings" && <SettingsScreen
           plants={plants}
           settings={settings}
+          firebaseUserId={getCurrentUserId()}
           deviceOnline={snapshot?.online === true}
           brokerOnline={backend?.mqttConnected === true}
           reservoirAvailable={snapshot?.reservoirAvailable}
@@ -344,6 +345,17 @@ function getAuthErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
   if (message.includes("api-key-not-valid")) return "PotBuddy sign-in could not start. Please check the app setup.";
   return "Could not sign in. Please check your connection and try again.";
+}
+
+function getReadingsErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (!message) return "Plant information could not be loaded. Try refreshing.";
+
+  if (/network request failed|failed to fetch|networkerror|load failed/i.test(message)) {
+    return "PotBuddy could not reach its API. Check the API address in the installed app and confirm the Render service is awake.";
+  }
+
+  return `Plant information could not be loaded: ${message}`;
 }
 
 function getFriendlyCommandError(error: unknown, fallback: string): string {
